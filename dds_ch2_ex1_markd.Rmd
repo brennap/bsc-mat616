@@ -1,0 +1,61 @@
+---
+title: "nyt data report"
+author: "Paul Brennan"
+output: html_document
+---
+
+```{r, echo=FALSE}
+#suppressWarnings(suppressPackageStartupMessages(library(ggplot2)))
+# BaseGraphics++ (Not as nice as ggplot, but no extra packages)
+suppressWarnings(suppressPackageStartupMessages(library(lattice)))
+library(knitr)
+library(markdown)
+library(rmarkdown)
+```
+
+This section processes the data file by:
+*read it into a dataframe
+*add an age category
+*assign names to gender values (also separate unknown gender for users not logged in)
+```{r}
+# Because my for-loop broke
+dir_name <- "/home/brennap/Documents/school/MAT-616/doing_data_science/dds_datasets/dds_ch2_nyt"
+dir_contents <- list.files(path=dir_name, pattern='nyt1.csv')
+csv <- dir_contents[1]
+# normal from here on
+nyt_data <- read.csv(file=paste(dir_name, csv, sep="/"))
+nyt_data$age_cat <- cut(nyt_data$Age, c(-Inf,0,18,24,34,44,54,64,Inf))
+nyt_data$ctr <- nyt_data$Clicks / nyt_data$Impressions
+nyt_data$Gender[nyt_data$Gender == 1] <- "male"
+nyt_data$Gender[nyt_data$Gender == 0] <- "female"
+nyt_data$Gender[nyt_data$Signed_In == 0] <- "unknown"
+nyt_data$Gender <- factor(nyt_data$Gender)
+```
+
+# Summary of `csv`
+```{r}
+summary(nyt_data)
+```
+
+```{r}
+histogram(~ Impressions | age_cat, data=nyt_data,
+                main="Distribution of Impressions by Age Cat.")
+histogram(~ ctr | age_cat, data=nyt_data,
+                main="Distribution of CTR by Age Cat.")
+histogram(~ ctr | age_cat, data=subset(nyt_data,ctr != 0),
+                main="Distribution of Non-Zero CTR by Age Cat.")
+
+densityplot(~ Impressions | age_cat, groups=Gender, auto.key=T, data=nyt_data, plot.points=F,
+                  main="Distribution of Impressions by Age Cat.")
+densityplot(~ ctr | age_cat, groups=Gender, auto.key=T, data=nyt_data, plot.points=F,
+                  main="Distribution of CTR by Age Cat.")
+densityplot(~ ctr | age_cat, groups=Gender, auto.key=T, data=subset(nyt_data,ctr != 0), plot.points=F,
+                  main="Distribution of Non-Zero CTR by Age Cat.")
+densityplot(~ ctr, groups=Signed_In, data=subset(nyt_data,ctr!=0), plot.points=F, auto.key=T,
+            main="Distribution of Non-Zero CTR by Signed-In State")
+
+bwplot(age_cat ~ ctr | Gender, data=subset(nyt_data, ctr != 0), layout=c(1,3),
+             main="Distribution of Non-Zero CTR by Age and Gender")
+
+rm(nyt_data)
+```
