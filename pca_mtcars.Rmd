@@ -1,0 +1,213 @@
+---
+title: "PCA for MTcars"
+subtitle: "A Practical Example"
+author: "Paul Brennan"
+fontsize: 8pt
+output:
+  beamer_presentation:
+    toc: true
+    fig_width: 5
+    fig_height: 5
+    theme: "Berkeley"
+    colortheme: "beaver"
+---
+
+```{r setup, include=FALSE, eval=F}
+knitr::opts_chunk$set(tidy = F, size="tiny", 
+                      fig.align="center", fig.width=5, fig.height=5)
+```
+
+# Introduction
+
+ - How do we analyze multi-dimensional data?
+    - Pairwise comparisions can quickly getout of hand
+    - Correlations between +2 variables can easily be missed
+ - Principle Component Analysis (PCA):
+    - Technique For Projecting Data onto new axes
+        - Each new axis, or "Principle Component", is orthognal to the others
+        - Each new axis is (usually) chosen to maximize variance (i.e. the spread of the data)
+
+# Sample Data
+- We will be using the R sample data mtcars
+    - Collected from Motor Trend Magazine in 1974
+    - 10 aspects of 32 automobiles
+```{r,width=10,results='hide'}
+library(stats)
+#install.packages("xtable")
+library(xtable)
+data(mtcars)
+head(mtcars)
+cols <- c("qsec","cyl","disp","hp","wt")
+#cols <- colnames(mtcars)
+```
+```{r, results='asis', echo=F}
+cat("$$", 
+    print(xtable(head(mtcars)),
+          include.rownames=F,floating=F,print.results=F),
+    "$$")
+```
+
+# Pairwise Comparison
+```{r}
+pairs(mtcars[,cols])
+```
+
+# Covariance and Correlation Matricies
+- Traditionally PCA was done using Co-Variance Matrices
+    - The Co-Variance Method could vary
+- Some applications use Correlation Matrices
+```{r}
+#cov(x, y = NULL, use = "everything",
+#    method = c("pearson", "kendall", "spearman"))
+Cv <- cov(mtcars[,cols])
+```
+```{r, results='asis', echo=F}
+cat("$$", 
+    "C_{v} = ",
+    print(xtable(Cv,align=rep("",ncol(Cv)+1)), 
+          floating=F, tabular.environment="bmatrix", hline.after=NULL, 
+          include.rownames=F, include.colnames=F, print.results=F),
+    "$$")
+```
+```{r}
+Cr <- cor(mtcars[,cols])
+```
+```{r, results='asis', echo=F}
+cat("$$", 
+    "C_{r} = ",
+    print(xtable(Cr,align=rep("",ncol(Cr)+1)), 
+          floating=F, tabular.environment="bmatrix", hline.after=NULL, 
+          include.rownames=F, include.colnames=F, print.results=F),
+    "$$")
+```
+
+Eigen Decompossition
+========================================================
+Being that our covariance matrix is square, we can calculate an eigensystem
+We can decompose our matrix using that eigensystem:
+$$
+C = EDE'
+$$
+```{r}
+Ev <- eigen(Cv)
+Cv2 <- Ev$vectors %*% diag(Ev$values) %*% solve(Ev$vectors)
+```
+```{r, results='asis', echo=F}
+cat("$$", 
+    "C_{v2} = ",
+    print(xtable(Cv2,align=rep("",ncol(Cv2)+1)), 
+          floating=F, tabular.environment="bmatrix", hline.after=NULL, 
+          include.rownames=F, include.colnames=F, print.results=F),
+    "$$")
+```
+```{r}
+signif(Cv2, digits=11) == signif(Cv,digits=11)
+```
+
+# Eigen Decompossition
+This works for the correlation matrix as well:
+$$
+C = EDE'
+$$
+```{r}
+Er <- eigen(Cr)
+Cr2 <- Er$vectors %*% diag(Er$values) %*% solve(Er$vectors)
+```
+```{r, results='asis', echo=F}
+cat("$$", 
+    "C_{r2} = ",
+    print(xtable(Cr2,align=rep("",ncol(Cr2)+1)), 
+          floating=F, tabular.environment="bmatrix", hline.after=NULL, 
+          include.rownames=F, include.colnames=F, print.results=F),
+    "$$")
+```
+```{r}
+signif(Cr2, digits=11) == signif(Cr,digits=11)
+```
+
+# Eigen Values
+$D$ is the diagonal matrix of our eigenvalues
+$$
+    \begin{bmatrix}{}
+    1 & 0 & 0 & 0 & 0 \\
+    0 & 1 & 0 & 0 & 0 \\
+    0 & 0 & 1 & 0 & 0 \\
+    0 & 0 & 0 & 1 & 0 \\
+    0 & 0 & 0 & 0 & 1 \\
+    \end{bmatrix} 
+    \begin{bmatrix}{}
+    \lambda_{1} \\
+    \lambda_{2} \\
+    \lambda_{2} \\
+    \lambda_{4} \\
+    \lambda_{5} \\
+    \end{bmatrix}
+    = 
+    \begin{bmatrix}{}
+    \lambda_{1} & 0 & 0 & 0 & 0 \\
+    0 & \lambda_{2} & 0 & 0 & 0 \\
+    0 & 0 & \lambda_{2} & 0 & 0 \\
+    0 & 0 & 0 & \lambda_{4} & 0 \\
+    0 & 0 & 0 & 0 & \lambda_{5} \\
+    \end{bmatrix} = D
+$$
+```{r, results='asis', echo=T}
+cat("$$", "D = ",
+    print(xtable(diag(Ev$values), align=rep("",ncol(diag(Ev$values))+1)), 
+          floating=F, tabular.environment="bmatrix", hline.after=NULL, 
+          include.rownames=F, include.colnames=F, print.results=F),
+    "$$")
+```
+
+# Eigen Vectors
+Our eigenvectors are arranged into a corresponding matrix
+```{r, results='asis', echo=T}
+cat("$$", "E = ",
+    print(xtable(Ev$vectors, align=rep("",ncol(Ev$vectors)+1)), 
+          floating=F, tabular.environment="bmatrix", hline.after=NULL, 
+          include.rownames=F, include.colnames=F, print.results=F),
+    "$$")
+```
+
+# Principal Components
+ - Those eigenvectors are then used to transform our original data into Principal Components
+     - To Project into two dimensions, only the vectors corresponding to our largest eigenvalues are used
+ - Example with covariance
+```{r, fig.align='left'}
+plot((as.matrix(mtcars[,cols]) %*% scale(Ev$vectors[,1:2])))
+```
+
+# Principal Components
+The "Old Fashion" Way [Correlation]: 
+```{r, fig.align='left'}
+plot((as.matrix(mtcars[,cols]) %*% scale(Er$vectors[,1:2])))
+```
+
+# Principal Components
+The Less-Old-Fashion Way [Covariance]:
+```{r}
+Pv <- princomp(mtcars[,cols], cor=F)
+biplot(Pv, xlabs=rep("o", nrow(mtcars[,cols])))
+```
+
+# Principal Components
+The Less-Old-Fashion Way [Correlation]:
+```{r}
+Pr <- princomp(mtcars[,cols], cor=T)
+biplot(Pr, xlabs=rep("o", nrow(mtcars[,cols])))
+```
+
+# Principal Components
+The Newest Way, using Single Value Decomposition:
+```{r}
+P <- prcomp(mtcars[,cols], center=T, scale.=T, retx=T)
+biplot(P, xlabs=rep("o", nrow(mtcars[,cols])))
+```
+
+# Principal Components
+- There are as many Principal Components as there are Variables
+    - Each is a projection of all Variables
+    - They are in order of variance
+```{r}
+pairs(P$x)
+```
