@@ -1,0 +1,211 @@
+---
+title: "ID3"
+author: "Paul Brennan"
+date: "December 4, 2016"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## ID3 algorithm example
+
+For this example, I've created a data frame containing the example data:
+```{r }
+quinlan <- data.frame(rbind(
+  c("sunny", "hot", "high", "false", "no"),
+  c("sunny", "hot", "high", "true", "no"),
+  c("overcast", "hot", "high", "false", "yes"),
+  c("rainy", "mild", "high", "false", "yes"),
+  c("rainy", "cool", "normal", "false", "yes"),
+  c("rainy", "cool", "normal", "true", "no"),
+  c("overcast", "cool", "normal", "true", "yes"),
+  c("sunny", "mild", "high", "false", "no"),
+  c("sunny", "cool", "normal", "false", "yes"),
+  c("rainy", "mild", "normal", "false", "yes"),
+  c("sunny", "mild", "normal", "true", "yes"),
+  c("overcast", "mild", "high", "true", "yes"),
+  c("overcast", "hot", "normal", "false", "yes"),
+  c("rainy", "mild", "high", "true", "no")
+))
+colnames(quinlan) <- c("outlook","temperature","humidity","windy","play")
+```
+
+## Entropy Function
+First I defined the most basic entropy formula as a function.
+It takes a vector, and for each occurring value the frequency (probability) is calculated.
+Those probabilities are then multiplied by their log and summed.
+I test the function using the "play" column, the classification we wish to predict.
+```{r }
+# entropy takes a vector of any type, and returns a scalar float
+entropy <- function(S){
+  if (!(is.vector(S) | is.factor(S))) {
+    warning("Entropy is calculated on a vector.")
+  }
+  if (length(S) == 0) {
+    e <- 0
+  } else {
+    P <- sapply(levels(factor(S)), function(m){sum(m == S)/length(S)})
+    e <- -sum(P*log2(P)) 
+  }
+  return(e)
+}
+
+entropy(quinlan$play)
+```
+
+## Conditional Entropy
+A seperate formula was provided for conditional entropy.
+Here I take subsets of our data based on the conditioning attribute. (ie. partitioning)
+For each occurring value of our conditioning attribute I calculate it's frequncy (probability) in the dataset, and multiply that by the entropy of the conditioned attribute in the subset.
+These values were then summed.
+The function was tested using the "play" attribute, conditioned by the "temperature" attribute.
+```{r}
+# conditional_entropy takes a dataframe, and two column names.
+# The first column is used to segment the data, 
+# The second column contains the classes we are trying to predict
+conditional_entropy <- function(data, attribute, class){
+  e <- 0
+  for (value in levels(data[[attribute]])) {
+    instances <- data[[attribute]] == value
+    e <- e + sum(instances)/nrow(data)*entropy(data[instances,class])
+  }
+  return(e)
+}
+
+conditional_entropy(data=quinlan, attribute='temperature', class='play')
+```
+
+## Gain function
+A trivial gain function was created, subtracting the entropy of an attribute by it's entropy when conditioned by another attribute.
+This is used to determine how much information is gained by conditioning.
+Again we test using "play", conditioned by "temperature".
+```{r}
+gain <- function(data, attribute, class){
+  entropy(data[[class]]) - conditional_entropy(data, attribute, class)
+}
+
+gain(data=quinlan, attribute='temperature', class='play')
+```
+
+It is then easy to calculate the gain in information for "play" conditioned by each other attribute:
+```{r}
+sapply(setdiff(names(quinlan),"play"), function(CND){gain(quinlan, CND, "play")})
+```
+
+## ID3 Function
+I defined a recursive function for generating the ID3 decision tree, returned as a list.
+If the data provided has no variation in the predicted attribute, the value of the attribute is returned.
+If the predicted attribute is the only attribute remaining in the given data, then the most common value is returned.
+These conditionals form the leaves of our tree, and terminate recursion.
+If they are not met, we calculate the gain of all attributes. The attribute with the most gain is then used for the current node. For each of the possible values of the attribute, we subset the data and call the function again to fill out the rest of the tree down that path.
+```{r}
+ID3 <- function(data, class){
+  if (length(levels(factor(data[[class]]))) == 1){
+    tree <- levels(factor(data[[class]]))
+  } else if (length(setdiff(names(data), class)) == 0){
+    tree <- names(which.max(table(data[[class]])))
+  }else {
+    G <- c()
+    for (attribute in setdiff(names(data), class)){
+      g <- gain(data, attribute, class)
+      names(g) <- attribute
+      G <- append(G, g)
+    }
+    node <- names(which.max(G))
+    edges <- levels(data[[node]])
+    tree <- list()
+    tree[[node]] <- list()
+    for (value in edges){
+      tree[[node]][[value]] <- ID3(data[data[[node]] == value,setdiff(names(data), node)], class)
+    }    
+  }
+  return(tree)
+}
+```
+
+We generate a tree for our data:
+```{r}
+tree <- ID3(data=quinlan, class='play')
+print(tree)
+```
+
+## Walking the tree
+Now that we have our tree, we need a function to use it for classifying data.
+This function is also recursive, calling itself until either a leaf node is found, or it is determined the data instance cannot be classified properly.
+```{r}
+ID3_walk <- function(instance, tree){
+  value <- instance[names(tree) == names(instance)]
+  if (length(value) == 0){
+    warning("Error while walking tree:  No attributes in instance match node.")
+    class <- NULL
+  }
+  sub_tree <- tree[[names(value)]][[value]]
+  if (typeof(sub_tree) == "list"){
+    class <- ID3_walk(instance, sub_tree)
+  } else if(is.null(sub_tree)) {
+    warning("Error while walking tree: Instance value does not match ")
+    class <- NULL
+  } else {
+    class <- sub_tree
+  }
+  return(class)
+}
+```
+
+The tree is successfully walked using our test data instance.
+```{r}
+test <- c(outlook="overcast", temperature="cool", humidity="high", windy="true")
+ID3_walk(test, tree)
+```
+
+## Curtailing High-variable Attributes
+The current ID3 implementation favors attributes with more occuring values.
+This is because attributes with more values have more gain, although it is not necessarily meaningful gain.
+To adjust for this, we can divide gain by the entropy of the conditioning attribute, thereby minimizing attributes with high entropy.
+For instance, the new "Gain Ratios" for "play" conditioned by our attributes would be:
+```{r}
+sapply(setdiff(names(quinlan),"play"), function(CND){
+  gain(data=quinlan, attribute=CND, class='play')/entropy(quinlan[[CND]])
+})
+```
+
+If the values of the conditioning attribute are all the same, we would be dividing 0 by 0, which could cause an error.
+
+Our new ID3 function would be as follows:
+```{r}
+ID3.1 <- function(data, class){
+  if (length(levels(factor(data[[class]]))) == 1){
+    tree <- levels(factor(data[[class]]))
+  } else if (length(setdiff(names(data), class)) == 0){
+    tree <- names(which.max(table(data[[class]])))
+  }else {
+    G <- c()
+    for (attribute in setdiff(names(data), class)){
+      if (length(levels(data[[attribute]])) == 0 ){
+        g <- 0
+      } else {
+        g <- gain(data, attribute, class)/entropy(data[[attribute]])  
+      }
+      names(g) <- attribute
+      G <- append(G, g)
+    }
+    node <- names(which.max(G))
+    edges <- levels(data[[node]])
+    tree <- list()
+    tree[[node]] <- list()
+    for (value in edges){
+      tree[[node]][[value]] <- ID3(data[data[[node]] == value,setdiff(names(data), node)], class)
+    }    
+  }
+  return(tree)
+}
+```
+
+We can then re-generate a tree for our data, and walk it using the previous test:
+```{r}
+tree2 <- ID3.1(data=quinlan, class='play')
+print(tree2)
+ID3_walk(test, tree2)
+```
