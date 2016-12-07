@@ -1,0 +1,197 @@
+---
+title: "Gladwell Survey"
+author: "Paul Brennan"
+date: "October 27, 2016"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+##Data cleanup 
+Most input data was converted from xlsx to csv using xlsx2csv (https://github.com/dilshod/xlsx2csv). One was converted from OSX numbers using the online tool Zamzar. The other two data sources required manual conversion to csv. The conversion process left a lot of empty lines, which I removed with sed:
+```{bash eval=FALSE }
+sed  '/^[A-Za-z]*[, ]*$/d' *
+```
+
+Some problems were present with the headings, so they were all stripped:
+```{bash eval=FALSE}
+ls | xargs -n1 awk -i inplace '!/Answer/{print}'
+```
+Upon reading the data into R, I noticed one set had the “Gender” and “Major” columns switched. Rather then fixing this in R, I re-arranged the data file:
+```{bash eval=FALSE}
+awk -i inplace -F , '{printf("%s,%s,%s,%s,%s,%s,%s\n",$1,$2,$4,$3,$5,$6,$7)}' colonja01.csv
+```
+
+Another data set was missing the age column, which caused problems when the data was read in. I added the column manually (with no assumed data):
+```{bash eval=FALSE}
+awk -i inplace -F , '{printf("%s,%s,%s,%s,,%s,%s\n",$1,$2,$3,$4,$5,$6)}' sancheji01.csv
+```
+
+I did not attempt to clean the major column.
+
+The data was read in and cleaned in a loop:
+```{r}
+#dir_name <- readline(prompt="Data directory: ")
+dir_name <- "/home/brennap/Documents/school/MAT-616/survey20"
+dir_contents <- list.files(path=dir_name, pattern='*.csv')
+cols <- c("Surveyer","Volunteer","Gender","Major","Age","A1","A2")
+survey <- data.frame()
+for (csv in dir_contents) {
+  tmp_survey <- read.csv(file=paste(dir_name, csv, sep="/"),header=FALSE,col.names=cols)
+  tmp_survey[,"Volunteer"] <- toupper(tmp_survey[,"Volunteer"])
+  tmp_survey[,"Gender"] <- toupper(tmp_survey[,"Gender"])
+  tmp_survey[,"Major"] <- toupper(tmp_survey[,"Major"])
+  tmp_survey$data_set <- rep(csv, nrow(tmp_survey))
+  tmp_survey[grep('^ *M', tmp_survey$Gender),"Gender"] <- "MALE"
+  tmp_survey[grep('^ *F', tmp_survey$Gender),"Gender"] <- "FEMALE"
+  survey <- rbind(survey,tmp_survey)
+}
+```
+
+
+The data was further cleaned and recategorized, adding columns to track if a given answer was correct:
+```{r warning=FALSE}
+survey$Gender <- factor(survey$Gender)
+survey$data_set <- factor(survey$data_set)
+survey$A1 <- as.numeric(gsub('[ a-z]*','',survey$A1))
+survey$A2 <- as.numeric(gsub('[ a-z]*','',survey$A2))
+survey$G1 <- (survey$A1 == 2)
+survey$G2 <- (survey$A2 == 5)
+survey[is.na(survey$A2),"G2"] <- FALSE
+```
+
+\pagebreak
+
+##Effect of Age
+
+I used boxplots to see how our intelligence test varied by age. 
+Question 1 showed little variation in age distribution between correct and incorrect answerers.
+For question 2, however, the "correct" group took a larger portion of older surveyees.
+Given the small age range, it might be expected that the "correct" and "incorrect" age distributions would similar. One could argue, though, that a lopsided distribution could be a result of college's teaching of critical thinking. Alternately, it could be the result of less intelligent individuals having a lower retention rate (higher dropout rate). I won't make any claims as to which of these hypotheses explain the observered data, though.
+```{r}
+boxplot(Age ~ G1, data=survey, main="Correct Answer 1 by Age", ylab="Age", xlab="Correct?")
+boxplot(Age ~ G2, data=survey, main="Correct Answer 2 by Age", ylab="Age", xlab="Correct?")
+```
+
+\pagebreak
+
+##Raw Answer distribution
+
+I was curious to see the distribution of answers. The questions have an "obvious" (though incorrect) answer and a correct answer, but it seems there are quite a bit of other answers given. This graph has little analytical value, though:
+```{r}
+plot(x=survey$A1, y=survey$A2, log="", main="Distribution of Answers", xlab="Answer 1", ylab="Answer 2")
+points(x=2,y=5,pch=19,col="red")
+grid(nx=5,ny=5)
+rug(survey$A1,side=1)
+rug(survey$A2,side=2)
+```
+
+Histograms give us a better view of how many correct, "obvious", and "off-the-wall" answers:
+```{r}
+barplot(table(survey$A1),space=0,xlab="Question 1 Answers", ylab="Frequency", main="Answer 1 Distribution")
+text(labels="Correct",x=50,srt=90,adj=c(0,1.5))
+barplot(table(survey$A2),space=0,xlab="Question 2 Answers", ylab="Frequency", main="Answer 2 Distribution")
+text(labels="Correct",x=100,srt=90,adj=c(0,10))
+```
+
+\pagebreak
+
+##How you ask the question...
+
+Inspired by the reading, I wanted to see if the way the questions were given affected the individuals' ability to provide the correct answer. The reasoning is that delivery of a question depends on the surveyor, and this may have influence on how the surveyee thinks about and answers the questions.
+I created a table containing the percentage of correct answers per serveyor, as well as their difference from the overall percentage.
+```{r}
+gmeans <- cbind(G1=sapply(levels(survey$data_set), function(csv){mean(survey[survey$data_set == csv,"G1"])}),
+                G2=sapply(levels(survey$data_set), function(csv){mean(survey[survey$data_set == csv,"G2"])}))
+
+gmeans <- rbind(cbind(gmeans,
+                      G1_diff=(gmeans[,'G1'] - mean(survey$G1)), 
+                      G2_diff=(gmeans[,'G2'] - mean(survey$G2))),
+                Overall=c(mean(survey$G1), mean(survey$G2), 0, 0)
+)
+print(gmeans)
+```
+They are plotted on dot-plots for easy consumption:
+```{r fig.asp=1}
+dotchart(t(gmeans[,c("G2","G1")]), main="Rate of Correct Answers")
+dotchart(t(gmeans[,c("G2_diff","G1_diff")]), main="Difference from Mean")
+```
+
+A few surveyors had consistent rates of correct answers for both questions. (Including one surveyor, for who every answer was wrong, and may have faked the data.) When comparing their rates to the overall rate, there seems to be a greater level of variability. I would have expected the differences from the mean to be more consistent per surveyor, however, it is possible that any particular surveyor asked one question better then the other.
+
+It is interesting to note that the correlation between the first and second answers being both correct or both incorrect given is different when looking at the whole dataset:
+```{r}
+cor(x=survey$G1, y=survey$G2)
+```
+and looking at the percentages by surveyor:
+```{r}
+cor(x=gmeans[,"G1"], y=gmeans[,"G2"])
+```
+This seems to suggest that the surveyor may have an impact on the surveyees ability to answer correctly. However, this difference is small, and even if it was considered significant, there could be other factors in play, such as how each surveyor chose their surveyees.
+
+\pagebreak
+
+##Visualizing the Combinations
+
+Lastly, I wanted to get a visual sense of how the answers to the questions were related to each other.
+I made up the following plot, which requires some description.
+For all combinations of answers (Correct-Correct [TT], Incorrect-Correct [FT], Correct-Incorrect [TF], Incorrect-Incorrect [FF]), I counted the number of answers in those categories.
+A horizontal line was plotted, with it's right endpoint representing the number of correct answers to question 1, and it's left endpoint representing the (negative) number of icorrect answers to question 1. The legth of the line is the total number of answers, and the tick-mark on that line is the difference of the counts.
+A vertical line is formed the same way, but for question 2.
+Four points are placed on the graph, each in a quadrant, and falling on the diagonals.
+Each represents the count of answer combinations. This count is mapped to the x and y axis, not the distance from the center.
+Guides-lines are addded to better visualize the difference between plotted metrics.
+```{r fig.asp=1}
+## Custom Plot
+ff.n <- nrow(survey[(survey$G1 == F & survey$G2 == F),])
+tf.n <- nrow(survey[(survey$G1 == T & survey$G2 == F),])
+ft.n <- nrow(survey[(survey$G1 == F & survey$G2 == T),])
+tt.n <- nrow(survey[(survey$G1 == T & survey$G2 == T),])
+t1.n <- tf.n + tt.n
+t2.n <- ft.n + tt.n
+f1.n <- ft.n + ff.n
+f2.n <- tf.n + ff.n
+mx <- max(t1.n,t2.n,f1.n,f2.n)*1.05
+plot(x=NA,y=NA, xlim=c(-mx,mx), ylim=c(-mx,mx), xlab="Question 1", ylab="Question 2")
+#grid()
+# x/y axis
+lines(x=c(-mx,mx), y=c(0,0), col="grey", lty=3)
+lines(x=c(0,0), y=c(-mx,mx), col="grey", lty=3)
+# Diagonal Guides
+lines(x=c(-mx,mx),y=c(-mx,mx), col="grey", lty=3)
+lines(x=c(-mx,mx),y=c(mx,-mx), col="grey", lty=3)
+# Subsets
+points(x=c(-ff.n, tf.n,tt.n,-ft.n),
+        y=c(-ff.n,-tf.n,tt.n, ft.n))
+text(x=c(-ff.n, tf.n,tt.n,-ft.n),
+     y=c(-ff.n,-tf.n,tt.n, ft.n),
+     labels=c("FF","TF","TT","FT"),adj=c(-0.5,-0.5))
+# Range
+lines(x=c(-f1.n,t1.n), y=c(0,0))
+points(x=(t1.n-f1.n),y=0, pch=3)
+lines(x=c(0,0), y=c(-f2.n,t2.n))
+points(x=0, y=(t2.n-f2.n), pch=3)
+
+# Horizontal Guides
+lines(x=c(-mx,mx),y=c(tt.n,tt.n), col="grey", lty=3)
+lines(x=c(-mx,mx),y=c(-tf.n,-tf.n), col="grey", lty=3)
+lines(x=c(-mx,mx),y=c(ft.n,ft.n), col="grey", lty=3)
+lines(x=c(-mx,mx),y=c(-ff.n,-ff.n), col="grey", lty=3)
+lines(x=c(-mx,mx),y=c(-f2.n,-f2.n), col="grey", lty=3)
+lines(x=c(-mx,mx),y=c(t2.n,t2.n), col="grey", lty=3)
+
+# Verticle Guides
+lines(y=c(-mx,mx),x=c(tt.n,tt.n), col="grey", lty=3)
+lines(y=c(-mx,mx),x=c(tf.n,tf.n), col="grey", lty=3)
+lines(y=c(-mx,mx),x=c(-ft.n,-ft.n), col="grey", lty=3)
+lines(y=c(-mx,mx),x=c(-ff.n,-ff.n), col="grey", lty=3)
+lines(y=c(-mx,mx),x=c(-f1.n,-f1.n), col="grey", lty=3)
+lines(y=c(-mx,mx),x=c(t1.n,t1.n), col="grey", lty=3)
+```
+
+
+This plot can be confusing, since possition in 2d space doesn't convey infomation, only the mappings to the axis.
+However, I believe it conveys a useful breakdown. We can see that Question 1 is much more descrimitating then question 2, being heavily skewed to incorrect answers. Question 2 is by no means easy, though, with about a 1 out of 2 correct-rate.
+This skew caries over to our categories, as well. We can see that in the subset people who got the first question wrong, roughly the same number of people got the second question right as did wrong. The same is true for the subset of people who got the first question right. Likewise, both subsets determined by the second question are split by the same ratio (~1:3) for the first question.
+This seems to back up the correlation values determined above, in that the ability or inability to answer one of the questions correctly seems to have no bearing on the ability to answer the other question.
