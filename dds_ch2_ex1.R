@@ -17,10 +17,12 @@ for (csv in dir_contents) {
   nyt_data <- read.csv(file=paste(dir_name, csv, sep="/"))
   nyt_data$age_cat <- cut(nyt_data$Age, c(-Inf,0,18,24,34,44,54,64,Inf))
   nyt_data$ctr <- nyt_data$Clicks / nyt_data$Impressions
+  nyt_data$ctr[nyt_data$Impressions == 0] <- 0 # Fixes Div. by 0; Assumes Clisks = 0
   nyt_data$Gender[nyt_data$Gender == 1] <- "male"
   nyt_data$Gender[nyt_data$Gender == 0] <- "female"
   nyt_data$Gender[nyt_data$Signed_In == 0] <- "unknown"
   nyt_data$Gender <- factor(nyt_data$Gender)
+  nyt_data$Signed_In <- as.logical(nyt_data$Signed_In)
   #print(paste0("Analysis of ",csv))
   #print(summary(nyt_data))
   grid.arrange(grid.text(paste0("Summary of ",csv)),tableGrob(summary(nyt_data)))
