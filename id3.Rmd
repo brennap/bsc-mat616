@@ -56,9 +56,9 @@ entropy(quinlan$play)
 ```
 
 ## Conditional Entropy
-A seperate formula was provided for conditional entropy.
+A separate formula was provided for conditional entropy.
 Here I take subsets of our data based on the conditioning attribute. (ie. partitioning)
-For each occurring value of our conditioning attribute I calculate it's frequncy (probability) in the dataset, and multiply that by the entropy of the conditioned attribute in the subset.
+For each occurring value of our conditioning attribute I calculate it's frequency (probability) in the dataset, and multiply that by the entropy of the conditioned attribute in the subset.
 These values were then summed.
 The function was tested using the "play" attribute, conditioned by the "temperature" attribute.
 ```{r}
@@ -161,7 +161,7 @@ ID3_walk(test, tree)
 ```
 
 ## Curtailing High-variable Attributes
-The current ID3 implementation favors attributes with more occuring values.
+The current ID3 implementation favors attributes with more occurring values.
 This is because attributes with more values have more gain, although it is not necessarily meaningful gain.
 To adjust for this, we can divide gain by the entropy of the conditioning attribute, thereby minimizing attributes with high entropy.
 For instance, the new "Gain Ratios" for "play" conditioned by our attributes would be:
